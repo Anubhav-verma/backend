@@ -61,4 +61,29 @@ router.post('/products/add', upload.single("image"), async (req, res) => {
     }
 });
 
+// DELETE a product at /api/products/:id
+router.delete('/products/:id', async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        // Extract the public ID from the Cloudinary URL
+        const imageUrl = product.image;
+        const publicId = imageUrl.split('/').pop().split('.')[0]; // Extract public_id
+
+        // Delete image from Cloudinary
+        await cloudinary.uploader.destroy(publicId);
+
+        // Delete the product from MongoDB
+        await Product.findByIdAndDelete(req.params.id);
+
+        return res.status(200).json({ message: "Product deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting product:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+});
+
 module.exports = router;
