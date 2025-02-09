@@ -8,7 +8,6 @@ dotenv.config();
 
 // Cloudinary configuration
 cloudinary.config({
-
     cloud_name: process.env.CLOUD_NAME,
     api_key: process.env.CLOUD_API_KEY,
     api_secret: process.env.CLOUD_API_SECRET,
@@ -16,12 +15,11 @@ cloudinary.config({
 
 // Configure multer to store files in memory
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({ storage: storage });
 
-// GET all products at /api/products
+// GET all products
 router.get('/products', async (req, res) => {
     try {
-        console.log("Enviroment", process.env);
         const products = await Product.find();
         res.json(products);
     } catch (err) {
@@ -29,39 +27,45 @@ router.get('/products', async (req, res) => {
     }
 });
 
-// POST to add a new product with image upload at /api/products/add
-router.post('/products/add', upload.single("image"), async (req, res) => {
+// ✅ **Updated: Handle multiple image uploads**
+router.post('/products/add', upload.array("images", 5), async (req, res) => {
     try {
-        // if (!req.file) {
-        //     return res.status(400).json({ message: "No file uploaded" });
-        // }
-        console.log(req);
-        // Upload image to Cloudinary using upload_stream
-        cloudinary.uploader.upload_stream({ resource_type: "image" }, async (error, result) => {
-            if (error) {
-                console.error("Cloudinary upload error:", error);
-                return res.status(500).json({ message: "Image upload failed", error });
-            }
-            console.log(result.secure_url)
-            // Create a new product with Cloudinary image URL
-            const newProduct = new Product({
-                name: req.body.name,
-                description: req.body.description,
-                price: req.body.price,
-                image: result.secure_url,
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ message: "No files uploaded" });
+        }
+
+        let imageUrls = [];
+
+        // Upload multiple images to Cloudinary
+        for (const file of req.files) {
+            const result = await new Promise((resolve, reject) => {
+                cloudinary.uploader.upload_stream({ resource_type: "image" }, (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }).end(file.buffer);
             });
 
-            // Save to MongoDB
-            await newProduct.save();
-            return res.status(201).json({ message: "Product added successfully", product: newProduct });
-        }).end(req.file.buffer);
+            imageUrls.push(result.secure_url);
+        }
+
+        // Create and save new product
+        const newProduct = new Product({
+            name: req.body.name,
+            description: req.body.description,
+            price: req.body.price,
+            images: imageUrls, // ✅ Save array of images
+        });
+
+        await newProduct.save();
+        return res.status(201).json({ message: "Product added successfully", product: newProduct });
+
     } catch (error) {
         console.error("Server error:", error);
         res.status(500).json({ message: "Server error", error });
     }
 });
 
-// DELETE a product at /api/products/:id
+// ✅ **Restored: Delete Product (Supports Multiple Images)**
 router.delete('/products/:id', async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
@@ -69,14 +73,18 @@ router.delete('/products/:id', async (req, res) => {
             return res.status(404).json({ message: "Product not found" });
         }
 
-        // Extract the public ID from the Cloudinary URL
-        const imageUrl = product.image;
-        const publicId = imageUrl.split('/').pop().split('.')[0]; // Extract public_id
+        // Extract public IDs from all image URLs
+        const publicIds = product.images.map((imageUrl) => {
+            const parts = imageUrl.split('/');
+            return parts[parts.length - 1].split('.')[0]; // Extract public_id
+        });
 
-        // Delete image from Cloudinary
-        await cloudinary.uploader.destroy(publicId);
+        // Delete all images from Cloudinary
+        for (const publicId of publicIds) {
+            await cloudinary.uploader.destroy(publicId);
+        }
 
-        // Delete the product from MongoDB
+        // Delete product from MongoDB
         await Product.findByIdAndDelete(req.params.id);
 
         return res.status(200).json({ message: "Product deleted successfully" });
