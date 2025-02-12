@@ -94,4 +94,60 @@ router.delete('/products/:id', async (req, res) => {
     }
 });
 
+const mongoose = require("mongoose");
+
+router.put('/products/:id', upload.array("images", 5), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // ✅ Validate if id is a proper ObjectId
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid product ID" });
+        }
+
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        let updatedImageUrls = JSON.parse(req.body.existingImages || "[]");
+
+        if (req.files && req.files.length > 0) {
+            const publicIds = product.images.map((imageUrl) => {
+                const parts = imageUrl.split('/');
+                return parts[parts.length - 1].split('.')[0];
+            });
+
+            for (const publicId of publicIds) {
+                await cloudinary.uploader.destroy(publicId);
+            }
+
+            for (const file of req.files) {
+                const result = await new Promise((resolve, reject) => {
+                    cloudinary.uploader.upload_stream({ resource_type: "image" }, (error, result) => {
+                        if (error) reject(error);
+                        else resolve(result);
+                    }).end(file.buffer);
+                });
+
+                updatedImageUrls.push(result.secure_url);
+            }
+        }
+
+        product.name = req.body.name || product.name;
+        product.description = req.body.description || product.description;
+        product.price = req.body.price || product.price;
+        product.images = updatedImageUrls;
+
+        await product.save();
+        return res.status(200).json({ message: "Product updated successfully", product });
+    } catch (error) {
+        console.error("Error updating product:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+});
+
+
+
+
 module.exports = router;
