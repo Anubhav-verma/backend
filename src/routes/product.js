@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const cloudinary = require("cloudinary").v2;
 const Product = require('../models/product');
+const mongoose = require("mongoose");
 const router = express.Router();
 const dotenv = require("dotenv-flow");
 dotenv.config();
@@ -27,7 +28,7 @@ router.get('/products', async (req, res) => {
     }
 });
 
-// ✅ **Updated: Handle multiple image uploads**
+// ✅ **Updated: Handle multiple image uploads & discounted price**
 router.post('/products/add', upload.array("images", 5), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
@@ -53,7 +54,8 @@ router.post('/products/add', upload.array("images", 5), async (req, res) => {
             name: req.body.name,
             description: req.body.description,
             price: req.body.price,
-            images: imageUrls, // ✅ Save array of images
+            discountedPrice: req.body.discountedPrice || null, // ✅ Added discountedPrice field
+            images: imageUrls,
         });
 
         await newProduct.save();
@@ -94,8 +96,7 @@ router.delete('/products/:id', async (req, res) => {
     }
 });
 
-const mongoose = require("mongoose");
-
+// ✅ **Updated: Edit product with discountedPrice**
 router.put('/products/:id', upload.array("images", 5), async (req, res) => {
     try {
         const { id } = req.params;
@@ -113,6 +114,7 @@ router.put('/products/:id', upload.array("images", 5), async (req, res) => {
         let updatedImageUrls = JSON.parse(req.body.existingImages || "[]");
 
         if (req.files && req.files.length > 0) {
+            // Delete existing images from Cloudinary
             const publicIds = product.images.map((imageUrl) => {
                 const parts = imageUrl.split('/');
                 return parts[parts.length - 1].split('.')[0];
@@ -122,6 +124,7 @@ router.put('/products/:id', upload.array("images", 5), async (req, res) => {
                 await cloudinary.uploader.destroy(publicId);
             }
 
+            // Upload new images
             for (const file of req.files) {
                 const result = await new Promise((resolve, reject) => {
                     cloudinary.uploader.upload_stream({ resource_type: "image" }, (error, result) => {
@@ -134,9 +137,11 @@ router.put('/products/:id', upload.array("images", 5), async (req, res) => {
             }
         }
 
+        // ✅ Update product details including discountedPrice
         product.name = req.body.name || product.name;
         product.description = req.body.description || product.description;
         product.price = req.body.price || product.price;
+        product.discountedPrice = req.body.discountedPrice || product.discountedPrice; // ✅ Added field
         product.images = updatedImageUrls;
 
         await product.save();
@@ -146,8 +151,5 @@ router.put('/products/:id', upload.array("images", 5), async (req, res) => {
         res.status(500).json({ message: "Server error", error });
     }
 });
-
-
-
 
 module.exports = router;
