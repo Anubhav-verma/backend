@@ -49,6 +49,15 @@ router.post('/products/add', upload.array("images", 5), async (req, res) => {
             imageUrls.push(result.secure_url);
         }
 
+        // ✅ Parse lotInfo safely (expecting JSON format)
+        let lotInfo = [];
+        try {
+            lotInfo = JSON.parse(req.body.lotInfo);
+            if (!Array.isArray(lotInfo)) throw new Error();
+        } catch (error) {
+            return res.status(400).json({ message: "Invalid lotInfo format" });
+        }
+
         // Create and save new product
         const newProduct = new Product({
             name: req.body.name,
@@ -56,6 +65,7 @@ router.post('/products/add', upload.array("images", 5), async (req, res) => {
             price: req.body.price,
             discountedPrice: req.body.discountedPrice || null, // ✅ Added discountedPrice field
             images: imageUrls,
+            lotInfo
         });
 
         await newProduct.save();
@@ -137,12 +147,21 @@ router.put('/products/:id', upload.array("images", 5), async (req, res) => {
             }
         }
 
+        let updatedLotInfo = [];
+        try {
+            updatedLotInfo = JSON.parse(req.body.lotInfo);
+            if (!Array.isArray(updatedLotInfo)) throw new Error();
+        } catch (error) {
+            return res.status(400).json({ message: "Invalid lotInfo format" });
+        }
+
         // ✅ Update product details including discountedPrice
         product.name = req.body.name || product.name;
         product.description = req.body.description || product.description;
         product.price = req.body.price || product.price;
         product.discountedPrice = req.body.discountedPrice || product.discountedPrice; // ✅ Added field
         product.images = updatedImageUrls;
+        product.lotInfo = updatedLotInfo;
 
         await product.save();
         return res.status(200).json({ message: "Product updated successfully", product });
