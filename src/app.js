@@ -1,8 +1,9 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const productRoutes = require('./routes/product');
 const dotenv = require('dotenv-flow');
+const productRoutes = require('./routes/product');
+const userRoutes = require('./routes/userRoutes'); // Import user routes
 
 dotenv.config(); // Automatically loads the correct .env file based on NODE_ENV
 
@@ -34,5 +35,7 @@ db.once('open', () => console.log('Connected to Database'));
 
 // Routes
 app.use('/api', productRoutes);
+app.use('/api/users', userRoutes); // Added user routes
 
+// Start Server
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
